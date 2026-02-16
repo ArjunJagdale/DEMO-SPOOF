@@ -14,62 +14,35 @@
 
   body {
     text-align: center;
-    font-family: 'Segoe UI', Arial, sans-serif;
-    overflow-x: hidden;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
-    padding: 20px 0;
-  }
-
-  .container {
-    background: white;
-    border-radius: 20px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-    max-width: 500px;
-    margin: 0 auto;
-    padding: 30px 20px;
+    font-family: Arial, sans-serif;
+    padding: 20px;
   }
 
   h2 {
-    font-size: 32px;
-    margin: 0 0 8px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    font-size: 24px;
+    margin-bottom: 8px;
   }
 
   .subtitle {
     font-size: 14px;
     color: #666;
     margin-bottom: 20px;
-    font-weight: 500;
   }
 
   .instructions {
     font-size: 14px;
-    color: #555;
+    color: #444;
     max-width: 400px;
     margin: 0 auto 20px;
-    line-height: 1.6;
-    padding: 12px 16px;
-    background: #f8f9fa;
-    border-radius: 10px;
-    border-left: 4px solid #667eea;
-  }
-
-  .instructions strong {
-    color: #333;
+    line-height: 1.5;
   }
 
   .video-wrapper {
     position: relative;
-    width: min(400px, calc(100vw - 64px));
-    height: min(400px, calc(100vw - 64px));
+    width: min(400px, calc(100vw - 40px));
+    height: min(400px, calc(100vw - 40px));
     margin: 0 auto 20px;
     overflow: hidden;
-    border-radius: 20px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
   }
 
   video {
@@ -96,111 +69,50 @@
   }
 
   #result {
-    font-size: 24px;
+    font-size: 18px;
     font-weight: bold;
-    padding: 16px 24px;
-    border-radius: 12px;
-    margin: 0 auto;
-    max-width: 300px;
-    transition: all 0.3s ease;
-  }
-
-  #result.loading {
-    background: #f0f0f0;
-    color: #666;
-  }
-
-  #result.real {
-    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
-    color: white;
-    box-shadow: 0 4px 15px rgba(56, 239, 125, 0.4);
-  }
-
-  #result.attack {
-    background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%);
-    color: white;
-    box-shadow: 0 4px 15px rgba(238, 9, 121, 0.4);
+    padding: 10px;
+    margin: 0 auto 8px;
   }
 
   .confidence {
-    font-size: 16px;
-    margin-top: 8px;
+    font-size: 14px;
     color: #666;
   }
 
   .model-info {
     margin-top: 20px;
-    padding: 12px;
-    background: #f8f9fa;
-    border-radius: 8px;
     font-size: 12px;
     color: #777;
-  }
-
-  .status-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 6px;
-    animation: pulse 2s infinite;
-  }
-
-  .status-dot.active {
-    background: #38ef7d;
-  }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.5; }
-  }
-
-  @media (max-width: 480px) {
-    .container {
-      padding: 20px 15px;
-    }
-    
-    h2 {
-      font-size: 26px;
-    }
-    
-    #result {
-      font-size: 20px;
-      padding: 12px 20px;
-    }
   }
 </style>
 </head>
 <body>
 
-<div class="container">
-  <h2>🛡️ Custom CNN Anti-Spoof</h2>
-  <p class="subtitle">Optimized 7-Block Architecture | Texture + Color Analysis</p>
+<h2>Custom CNN Anti-Spoof</h2>
+<p class="subtitle">Optimized 7-Block Architecture | Texture + Color Analysis</p>
 
-  <div class="instructions">
-    <strong>📸 Instructions:</strong><br>
-    • Ensure good lighting (avoid harsh reflections)<br>
-    • Fit your face tightly within the oval<br>
-    • Hold steady for accurate detection
-  </div>
+<div class="instructions">
+  <strong>📸 Instructions:</strong><br>
+  • Ensure good lighting (avoid harsh reflections)<br>
+  • Fit your face tightly within the oval<br>
+  • Hold steady for accurate detection
+</div>
 
-  <div class="video-wrapper">
-    <video id="video" autoplay playsinline></video>
-  </div>
+<div class="video-wrapper">
+  <video id="video" autoplay playsinline></video>
+</div>
 
-  <canvas id="canvas" width="224" height="224" style="display:none;"></canvas>
-  
-  <div id="result" class="loading">
-    <span class="status-dot"></span>Loading model...
-  </div>
-  
-  <p class="confidence" id="confidence"></p>
+<canvas id="canvas" width="224" height="224" style="display:none;"></canvas>
 
-  <div class="model-info">
-    <strong>Model:</strong> spoofnet_custom.onnx<br>
-    <strong>Architecture:</strong> Custom CNN (7 blocks + 2 branches)<br>
-    <strong>Input:</strong> 224×224×3 | <strong>Inference:</strong> Real-time
-  </div>
+<div id="result">Loading model...</div>
+
+<p class="confidence" id="confidence"></p>
+
+<div class="model-info">
+  <strong>Model:</strong> optimized_antispoof_cnn.onnx<br>
+  <strong>Architecture:</strong> Custom CNN (7 blocks + 2 branches)<br>
+  <strong>Input:</strong> 224×224×3 | <strong>Inference:</strong> Real-time
 </div>
 
 <script>
@@ -210,17 +122,14 @@ let isProcessing = false;
 async function init() {
   try {
     // Change this to your ONNX model filename
-    session = await ort.InferenceSession.create("spoofnet_custom.onnx");
+    session = await ort.InferenceSession.create("optimized_antispoof_cnn.onnx");
     
-    document.getElementById("result").innerHTML = 
-      '<span class="status-dot active"></span>Model loaded. Starting camera...';
+    document.getElementById("result").innerText = 'Model loaded. Starting camera...';
     
     await startCamera();
   } catch (error) {
-    document.getElementById("result").innerHTML = 
-      '❌ Error loading model';
-    document.getElementById("confidence").innerText = 
-      `Error: ${error.message}`;
+    document.getElementById("result").innerText = 'Error loading model';
+    document.getElementById("confidence").innerText = `Error: ${error.message}`;
     console.error("Initialization error:", error);
   }
 }
@@ -244,8 +153,7 @@ async function startCamera() {
       runLoop();
     };
   } catch (error) {
-    document.getElementById("result").innerHTML = 
-      '❌ Camera access denied';
+    document.getElementById("result").innerText = 'Camera access denied';
     document.getElementById("confidence").innerText = 
       'Please allow camera access to use this feature';
     console.error("Camera error:", error);
@@ -303,21 +211,17 @@ async function runLoop() {
     
     if (prob > 0.5) {
       // REAL
-      resultDiv.className = "real";
-      resultDiv.innerHTML = 
-        '<span class="status-dot active"></span>✅ REAL FACE';
+      resultDiv.innerText = 'REAL FACE';
       confidenceDiv.innerText = `Confidence: ${(prob * 100).toFixed(1)}%`;
     } else {
       // ATTACK
-      resultDiv.className = "attack";
-      resultDiv.innerHTML = 
-        '<span class="status-dot active"></span>⚠️ SPOOF DETECTED';
+      resultDiv.innerText = 'SPOOF DETECTED';
       confidenceDiv.innerText = `Confidence: ${((1 - prob) * 100).toFixed(1)}%`;
     }
 
   } catch (error) {
     console.error("Inference error:", error);
-    document.getElementById("result").innerHTML = '❌ Inference error';
+    document.getElementById("result").innerText = 'Inference error';
     document.getElementById("confidence").innerText = error.message;
   }
 
