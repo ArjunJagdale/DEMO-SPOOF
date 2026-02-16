@@ -110,7 +110,7 @@
 <p class="confidence" id="confidence"></p>
 
 <div class="model-info">
-  <strong>Model:</strong> optimized_antispoof_cnn.onnx<br>
+  <strong>Model:</strong> spoofnet_custom.onnx<br>
   <strong>Architecture:</strong> Custom CNN (7 blocks + 2 branches)<br>
   <strong>Input:</strong> 224×224×3 | <strong>Inference:</strong> Real-time
 </div>
@@ -122,7 +122,7 @@ let isProcessing = false;
 async function init() {
   try {
     // Change this to your ONNX model filename
-    session = await ort.InferenceSession.create("optimized_antispoof_cnn.onnx");
+    session = await ort.InferenceSession.create("spoofnet_custom.onnx");
     
     document.getElementById("result").innerText = 'Model loaded. Starting camera...';
     
