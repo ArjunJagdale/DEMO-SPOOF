@@ -5,21 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Anti-Spoof Live</title>
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
   body {
     text-align: center;
     font-family: Arial;
     overflow-x: hidden;
-    background: #111;
-    color: #eee;
   }
-  h2 { font-size: 30px; margin: 16px 0 6px; color: #fff; }
+
+  h2 {
+    font-size: 30px;
+    margin: 16px 0 6px;
+  }
+
   .instructions {
     font-size: 15px;
-    color: #aaa;
+    color: #444;
     max-width: 360px;
     margin: 8px auto 16px;
     line-height: 1.4;
@@ -28,11 +34,17 @@
 
   .video-wrapper {
     position: relative;
+    /*
+      Use 100vw minus a fixed gutter (12px each side).
+      This guarantees it never touches screen edges on any phone,
+      and caps at 400px on larger screens.
+    */
     width: min(400px, calc(100vw - 24px));
     height: min(400px, calc(100vw - 24px));
     margin: 0 auto;
     overflow: hidden;
   }
+
   video {
     width: 100%;
     height: 100%;
@@ -40,400 +52,108 @@
     transform: scaleX(-1);
     display: block;
   }
+
+  /*
+    Oval overlay.
+
+    FIX: gradient stops must be in strictly ascending order.
+    transparent 90% → dark 91% gives a razor-sharp edge.
+
+    ellipse 65% 80%  →  oval is 65% wide, 80% tall of the wrapper,
+    leaving ~17.5% visible margin on left/right (~10% of total width).
+  */
   .video-wrapper::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
-    background: radial-gradient(
-      ellipse 35% 55% at center,
-      transparent 0%,
-      transparent 90%,
-      rgba(0,0,0,0.80) 91%
-    );
+    background:
+      radial-gradient(
+        ellipse 35% 55% at center,
+        transparent 0%,
+        transparent 90%,
+        rgba(0, 0, 0, 0.80) 91%
+      );
   }
-  #debugCanvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-    z-index: 3;
-  }
-  #statusPill {
-    position: absolute;
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 4;
-    font-size: 12px;
-    padding: 5px 14px;
-    border-radius: 100px;
-    background: rgba(0,0,0,0.75);
-    border: 1px solid #555;
-    color: #aaa;
-    white-space: nowrap;
-    transition: color 0.25s, border-color 0.25s;
-  }
-  #statusPill.aligned { color: #00e5a0; border-color: #00e5a0; }
-
-  #captureBtn {
-    display: none;
-    margin: 16px auto 0;
-    padding: 13px 40px;
-    font-size: 16px;
-    font-weight: bold;
-    background: #00e5a0;
-    color: #111;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-  }
-  #captureBtn.visible { display: inline-block; }
-  #captureBtn:disabled { background: #333; color: #666; cursor: not-allowed; }
-
-  #result {
-    margin-top: 14px;
-    font-size: 18px;
-    min-height: 28px;
-    color: #ccc;
-  }
-  #result.real   { color: #00e5a0; font-weight: bold; }
-  #result.attack { color: #ff6b6b; font-weight: bold; }
-
-  /* Preview of the exact crop that goes into the model */
-  #cropPreview {
-    display: none;
-    margin: 12px auto 0;
-    border: 2px solid #333;
-    border-radius: 6px;
-    image-rendering: pixelated;
-  }
-  #cropPreview.visible { display: block; }
-
-  #inferCanvas { display: none; }
 </style>
 </head>
 <body>
 
 <h2>Live Anti-Spoof</h2>
+
 <p class="instructions">
-  • Good lighting, face clearly visible.<br>
-  • Fit your face tightly inside the oval — green = ready.
+  • Ensure your face is clearly visible in good lighting (avoid harsh reflections).<br>
+  • Align and fit your face tightly within the oval.
 </p>
 
-<div class="video-wrapper" id="wrapper">
+<div class="video-wrapper">
   <video id="video" autoplay playsinline></video>
-  <canvas id="debugCanvas"></canvas>
-  <div id="statusPill">Looking for face…</div>
 </div>
 
-<!-- 224×224 canvas for inference (hidden) -->
-<canvas id="inferCanvas" width="224" height="224"></canvas>
-
-<button id="captureBtn">Capture &amp; Verify</button>
-<p id="result">Loading model…</p>
-
-<!-- Shows the exact 224×224 crop sent to model, for debugging -->
-<canvas id="cropPreview" width="224" height="224"></canvas>
+<canvas id="canvas" width="224" height="224" style="display:none;"></canvas>
+<p id="result" style="margin-top:12px;">Loading model...</p>
 
 <script>
-// ─────────────────────────────────────────────────────────
-//  Oval matches CSS: ellipse 35% 55% at center
-// ─────────────────────────────────────────────────────────
-const OX = 0.50, OY = 0.50, ORX = 0.35, ORY = 0.55;
+let session;
 
-function inOval(nx, ny) {
-  const dx = (nx - OX) / ORX;
-  const dy = (ny - OY) / ORY;
-  return dx * dx + dy * dy <= 1.0;
+async function init() {
+  session = await ort.InferenceSession.create("spoofnet_custom.onnx");
+  document.getElementById("result").innerText = "Model loaded. Starting camera...";
+  startCamera();
 }
 
-// ── Dataset crop constants (must match collection script exactly) ──
-const CROP_TOP    = 0.10;
-const CROP_BOTTOM = 0.10;
-const CROP_LEFT   = 0.02;
-const CROP_RIGHT  = 0.02;
+async function startCamera() {
+  const video = document.getElementById("video");
 
-// ── DOM ──
-const video       = document.getElementById("video");
-const wrapper     = document.getElementById("wrapper");
-const debugCanvas = document.getElementById("debugCanvas");
-const dctx        = debugCanvas.getContext("2d");
-const statusPill  = document.getElementById("statusPill");
-const captureBtn  = document.getElementById("captureBtn");
-const resultEl    = document.getElementById("result");
-const inferCanvas = document.getElementById("inferCanvas");
-const ictx        = inferCanvas.getContext("2d");
-const cropPreview = document.getElementById("cropPreview");
-const pctx        = cropPreview.getContext("2d");
-
-let session     = null;
-let faceAligned = false;
-let running     = false;
-
-// Store last known face bbox in pixel coords (on the video element)
-let lastBBox = null;
-
-function syncCanvas() {
-  debugCanvas.width  = wrapper.offsetWidth;
-  debugCanvas.height = wrapper.offsetHeight;
-}
-new ResizeObserver(syncCanvas).observe(wrapper);
-
-// ── Load ONNX model ──
-async function loadModel() {
-  for (const name of ["optimized_antispoof_cnn_int8.onnx", "antispoof_model.onnx"]) {
-    try {
-      session = await ort.InferenceSession.create(name);
-      console.log("Model loaded:", name);
-      resultEl.textContent = "Ready — align your face.";
-      return;
-    } catch(_) {}
-  }
-  resultEl.textContent = "No model found (place .onnx here).";
-}
-
-// ── MediaPipe ──
-function startDetection() {
-  syncCanvas();
-  const fd = new FaceDetection({
-    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}`
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "user" }
   });
-  fd.setOptions({ model: "short", minDetectionConfidence: 0.3 });
-  fd.onResults(onResults);
 
-  const cam = new Camera(video, {
-    onFrame: async () => { await fd.send({ image: video }); },
-    width: 640, height: 480
-  });
-  cam.start();
+  video.srcObject = stream;
+  runLoop();
 }
 
-function onResults(results) {
-  const W = debugCanvas.width;
-  const H = debugCanvas.height;
-  dctx.clearRect(0, 0, W, H);
+async function runLoop() {
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
 
-  drawOval(W, H);
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, -224, 0, 224, 224);
+  ctx.restore();
 
-  if (!results.detections || results.detections.length === 0) {
-    lastBBox = null;
-    setAligned(false, "No face detected");
-    return;
-  }
+  const imageData = ctx.getImageData(0, 0, 224, 224).data;
+  const floatData = new Float32Array(1 * 3 * 224 * 224);
 
-  const det = results.detections[0];
-  const bb  = det.boundingBox;
-
-  // Mirror x (video is CSS-flipped)
-  const fCX = 1 - bb.xCenter;
-  const fCY = bb.yCenter;
-  const bW  = bb.width;
-  const bH  = bb.height;
-
-  const fL = fCX - bW / 2;
-  const fR = fCX + bW / 2;
-  const fT = fCY - bH / 2;
-  const fB = fCY + bH / 2;
-
-  // ── Alignment checks ──
-  const centreOK   = inOval(fCX, fCY);
-  const topMidIn   = inOval(fCX, fT);
-  const botMidIn   = inOval(fCX, fB);
-  const shrink     = bW * 0.15;   // account for MediaPipe bbox padding
-  const leftMidIn  = inOval(fL + shrink, fCY);
-  const rightMidIn = inOval(fR - shrink, fCY);
-  const bigEnough  = (bW * bH) >= (Math.PI * ORX * ORY * 0.45);
-
-  const aligned = centreOK && topMidIn && botMidIn && leftMidIn && rightMidIn && bigEnough;
-
-  // ── Store raw bbox in video-element pixel space (unmirrored) ──
-  // We store the RAW (pre-mirror) coords because we'll draw from the video
-  // directly, and the video data itself is unmirrored.
-  // Raw: xCenter = bb.xCenter (unmirrored), same y
-  lastBBox = {
-    // In video-pixel coords (video.videoWidth × video.videoHeight)
-    rawCX : bb.xCenter,   // unmirrored — for canvas drawImage
-    rawCY : bb.yCenter,
-    bW, bH
-  };
-
-  // Draw bbox on debug canvas (display coords, mirrored)
-  const color = aligned ? "#00e5a0" : "#ff6b6b";
-  dctx.strokeStyle = color;
-  dctx.lineWidth   = 2.5;
-  dctx.strokeRect(fL * W, fT * H, bW * W, bH * H);
-
-  // Show the trimmed crop box (what goes to model) in cyan
-  const tL = (fL + CROP_LEFT  * bW) * W;
-  const tT = (fT + CROP_TOP   * bH) * H;
-  const tW = (bW * (1 - CROP_LEFT - CROP_RIGHT))  * W;
-  const tH = (bH * (1 - CROP_TOP  - CROP_BOTTOM)) * H;
-  dctx.strokeStyle = "#00cfff";
-  dctx.lineWidth   = 1.5;
-  dctx.setLineDash([4, 3]);
-  dctx.strokeRect(tL, tT, tW, tH);
-  dctx.setLineDash([]);
-
-  // Centre dot
-  dctx.fillStyle = aligned ? "#00e5a0" : "#ff9944";
-  dctx.beginPath();
-  dctx.arc(fCX * W, fCY * H, 5, 0, Math.PI * 2);
-  dctx.fill();
-
-  // Debug label
-  const conf  = +(Array.isArray(det.score) ? det.score[0] : det.score ?? 0);
-  const label = `ctr:${centreOK?"✓":"✗"} v:${(topMidIn&&botMidIn)?"✓":"✗"} h:${(leftMidIn&&rightMidIn)?"✓":"✗"} sz:${bigEnough?"✓":"✗"} c:${conf.toFixed(2)}`;
-  dctx.font      = "11px monospace";
-  dctx.fillStyle = "#fff";
-  dctx.fillText(label, fL * W + 4, Math.max(fT * H - 6, 12));
-
-  // Hint
-  let hint = "Face aligned ✓";
-  if (!aligned) {
-    if (!centreOK)                        hint = "Centre your face";
-    else if (!bigEnough)                  hint = "Move closer";
-    else if (!topMidIn)                   hint = "Move down";
-    else if (!botMidIn)                   hint = "Move up";
-    else if (!leftMidIn || !rightMidIn)   hint = "Centre left/right";
-    else                                  hint = "Adjust position";
-  }
-
-  setAligned(aligned, hint);
-}
-
-function drawOval(W, H) {
-  dctx.save();
-  dctx.beginPath();
-  dctx.ellipse(OX * W, OY * H, ORX * W, ORY * H, 0, 0, Math.PI * 2);
-  dctx.strokeStyle = faceAligned ? "#00e5a0" : "rgba(255,255,255,0.5)";
-  dctx.lineWidth   = faceAligned ? 3.5 : 2;
-  dctx.setLineDash(faceAligned ? [] : [8, 5]);
-  dctx.stroke();
-  dctx.restore();
-}
-
-function setAligned(aligned, hint) {
-  faceAligned = aligned;
-  statusPill.textContent = hint || "Align your face";
-  statusPill.classList.toggle("aligned", aligned);
-  captureBtn.classList.toggle("visible", aligned);
-}
-
-// ─────────────────────────────────────────────────────────
-//  CROP that exactly replicates the dataset collection script
-//
-//  Dataset script:
-//    1. OpenCV DNN gives bbox (x1,y1,x2,y2) in frame pixels
-//    2. w = x2-x1, h = y2-y1
-//    3. x1 += CROP_LEFT*w   x2 -= CROP_RIGHT*w
-//       y1 += CROP_TOP*h    y2 -= CROP_BOTTOM*h
-//    4. crop frame[y1:y2, x1:x2]  → resize to 224×224
-//
-//  We replicate this using MediaPipe bbox → same offsets → drawImage crop
-// ─────────────────────────────────────────────────────────
-function extractCrop() {
-  if (!lastBBox) return false;
-
-  const vW = video.videoWidth;
-  const vH = video.videoHeight;
-  const { rawCX, rawCY, bW, bH } = lastBBox;
-
-  // Raw (unmirrored) bbox in video pixels
-  let x1 = (rawCX - bW / 2) * vW;
-  let y1 = (rawCY - bH / 2) * vH;
-  let x2 = (rawCX + bW / 2) * vW;
-  let y2 = (rawCY + bH / 2) * vH;
-
-  const w = x2 - x1;
-  const h = y2 - y1;
-
-  // Apply same crop offsets as dataset script
-  x1 += CROP_LEFT   * w;
-  x2 -= CROP_RIGHT  * w;
-  y1 += CROP_TOP    * h;
-  y2 -= CROP_BOTTOM * h;
-
-  // Clamp to frame
-  x1 = Math.max(0, x1); y1 = Math.max(0, y1);
-  x2 = Math.min(vW, x2); y2 = Math.min(vH, y2);
-
-  const cw = x2 - x1;
-  const ch = y2 - y1;
-  if (cw <= 0 || ch <= 0) return false;
-
-  // Draw the cropped region to 224×224 inferCanvas
-  // Video feed is unmirrored in memory (CSS mirror is display-only),
-  // but the dataset was collected from a non-selfie camera normally,
-  // so we mirror x here to match selfie orientation.
-  ictx.save();
-  ictx.translate(224, 0);
-  ictx.scale(-1, 1);
-  ictx.drawImage(video, x1, y1, cw, ch, 0, 0, 224, 224);
-  ictx.restore();
-
-  return true;
-}
-
-// ── Capture & Infer ──
-captureBtn.addEventListener("click", async () => {
-  if (running || !faceAligned) return;
-  running = true;
-  captureBtn.disabled = true;
-  resultEl.className  = "";
-  resultEl.textContent = "Analysing… ⏳";
-
-  // Extract the crop matching dataset collection
-  const ok = extractCrop();
-  if (!ok) {
-    resultEl.textContent = "Crop failed — try again.";
-    captureBtn.disabled = false;
-    running = false;
-    return;
-  }
-
-  // Show the exact crop for debugging (remove in production)
-  pctx.drawImage(inferCanvas, 0, 0);
-  cropPreview.classList.add("visible");
-
-  // Normalize exactly as training: mean/std ImageNet
-  const imageData = ictx.getImageData(0, 0, 224, 224).data;
-  const floatData = new Float32Array(3 * 224 * 224);
   const mean = [0.485, 0.456, 0.406];
   const std  = [0.229, 0.224, 0.225];
+
   for (let i = 0; i < 224 * 224; i++) {
-    floatData[i]             = (imageData[i*4]   / 255 - mean[0]) / std[0];
-    floatData[i + 224*224]   = (imageData[i*4+1] / 255 - mean[1]) / std[1];
-    floatData[i + 2*224*224] = (imageData[i*4+2] / 255 - mean[2]) / std[2];
+    const r = imageData[i * 4]     / 255;
+    const g = imageData[i * 4 + 1] / 255;
+    const b = imageData[i * 4 + 2] / 255;
+
+    floatData[i]             = (r - mean[0]) / std[0];
+    floatData[i + 224*224]   = (g - mean[1]) / std[1];
+    floatData[i + 2*224*224] = (b - mean[2]) / std[2];
   }
 
-  await new Promise(r => setTimeout(r, 2000));
+  const tensor = new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
+  const results = await session.run({ input: tensor });
 
-  if (session) {
-    try {
-      const tensor = new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
-      const out    = await session.run({ input: tensor });
-      const prob   = 1 / (1 + Math.exp(-out.output.data[0]));
-      const isReal = prob > 0.5;
-      resultEl.className   = isReal ? "real" : "attack";
-      resultEl.textContent = isReal
-        ? `✓ REAL  (${prob.toFixed(3)})`
-        : `✗ SPOOF  (${(1-prob).toFixed(3)})`;
-    } catch(e) {
-      resultEl.textContent = "Inference error: " + e.message;
-    }
-  } else {
-    resultEl.textContent = "No model — place .onnx in same folder.";
-  }
+  const logit = results.output.data[0];
+  const prob = 1 / (1 + Math.exp(-logit));
 
-  captureBtn.disabled = false;
-  running = false;
-});
+  document.getElementById("result").innerText =
+    prob > 0.5 ? `REAL (${prob.toFixed(3)})` :
+                 `ATTACK (${prob.toFixed(3)})`;
 
-// ── Boot ──
-loadModel();
-startDetection();
+  requestAnimationFrame(runLoop);
+}
+
+init();
 </script>
+
 </body>
 </html>
