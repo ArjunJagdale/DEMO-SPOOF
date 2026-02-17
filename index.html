@@ -3,66 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Anti-Spoof</title>
+  <title>Anti-Spoof Live</title>
   <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --bg: #0d0d0f;
-    --card: #161618;
-    --border: #2a2a2e;
-    --accent: #00e5a0;
-    --accent-dim: rgba(0,229,160,0.12);
-    --warn: #ff6b6b;
-    --warn-dim: rgba(255,107,107,0.12);
-    --text: #f0f0f2;
-    --muted: #6b6b75;
-  }
-
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 24px 12px 40px;
-  }
-
-  header {
-    margin-bottom: 20px;
     text-align: center;
-  }
-
-  .logo {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--accent);
-    margin-bottom: 6px;
-  }
-
-  h1 {
-    font-size: 22px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-
-  /* ── Video container ── */
-  .cam-wrap {
-    position: relative;
-    width: min(360px, calc(100vw - 24px));
-    height: min(360px, calc(100vw - 24px));
-    border-radius: 16px;
-    overflow: hidden;
+    font-family: Arial;
+    overflow-x: hidden;
     background: #111;
-    border: 1px solid var(--border);
+    color: #eee;
+  }
+  h2 { font-size: 30px; margin: 16px 0 6px; color: #fff; }
+  .instructions {
+    font-size: 15px;
+    color: #aaa;
+    max-width: 360px;
+    margin: 8px auto 16px;
+    line-height: 1.4;
+    padding: 0 12px;
+  }
+
+  /* Original wrapper sizing — untouched */
+  .video-wrapper {
+    position: relative;
+    width: min(400px, calc(100vw - 24px));
+    height: min(400px, calc(100vw - 24px));
+    margin: 0 auto;
+    overflow: hidden;
   }
 
   video {
@@ -73,403 +43,291 @@
     display: block;
   }
 
-  /* dark oval mask */
-  .cam-wrap::after {
+  /* Original CSS oval mask */
+  .video-wrapper::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
     background: radial-gradient(
-      ellipse 50% 65% at center,
+      ellipse 35% 55% at center,
       transparent 0%,
-      transparent 88%,
-      rgba(13,13,15,0.92) 90%
+      transparent 90%,
+      rgba(0,0,0,0.80) 91%
     );
   }
 
-  /* SVG oval outline on top of mask */
-  .oval-svg {
+  /* Debug canvas — overlays video, same bounds, above the mask */
+  #debugCanvas {
     position: absolute;
     inset: 0;
     width: 100%;
     height: 100%;
     pointer-events: none;
-    z-index: 2;
+    z-index: 3;
   }
 
-  .oval-ring {
-    transition: stroke 0.3s, stroke-width 0.2s;
-  }
-
-  /* ── Status pill ── */
-  .status-pill {
+  #statusPill {
     position: absolute;
     bottom: 14px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 3;
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+    z-index: 4;
+    font-size: 12px;
     padding: 5px 14px;
     border-radius: 100px;
-    background: rgba(13,13,15,0.85);
-    border: 1px solid var(--border);
-    color: var(--muted);
+    background: rgba(0,0,0,0.75);
+    border: 1px solid #555;
+    color: #aaa;
     white-space: nowrap;
-    transition: all 0.3s;
+    transition: color 0.25s, border-color 0.25s;
   }
-  .status-pill.aligned {
-    color: var(--accent);
-    border-color: var(--accent);
-    background: var(--accent-dim);
-  }
+  #statusPill.aligned { color: #00e5a0; border-color: #00e5a0; }
 
-  /* ── Controls below cam ── */
-  .controls {
-    margin-top: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 14px;
-    width: min(360px, calc(100vw - 24px));
-  }
-
-  .hint {
-    font-size: 13px;
-    color: var(--muted);
-    text-align: center;
-    line-height: 1.5;
-    transition: opacity 0.3s;
-  }
-
-  /* Capture button – hidden until face is aligned */
   #captureBtn {
     display: none;
-    width: 100%;
-    padding: 14px;
-    border-radius: 12px;
+    margin: 16px auto 0;
+    padding: 13px 40px;
+    font-size: 16px;
+    font-weight: bold;
+    background: #00e5a0;
+    color: #111;
     border: none;
-    background: var(--accent);
-    color: #0d0d0f;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15px;
-    font-weight: 600;
+    border-radius: 10px;
     cursor: pointer;
-    letter-spacing: -0.01em;
-    transition: opacity 0.2s, transform 0.15s;
   }
-  #captureBtn:active { transform: scale(0.98); opacity: 0.88; }
-  #captureBtn.visible { display: block; }
-  #captureBtn:disabled {
-    background: var(--border);
-    color: var(--muted);
-    cursor: not-allowed;
-    transform: none;
-  }
+  #captureBtn.visible { display: inline-block; }
+  #captureBtn:disabled { background: #333; color: #666; cursor: not-allowed; }
 
-  /* Result card */
-  #resultCard {
-    display: none;
-    width: 100%;
-    padding: 16px 20px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    text-align: left;
+  #result {
+    margin-top: 14px;
+    font-size: 18px;
+    min-height: 28px;
+    color: #ccc;
   }
-  #resultCard.visible { display: block; }
-  #resultCard.real { border-color: var(--accent); background: var(--accent-dim); }
-  #resultCard.attack { border-color: var(--warn); background: var(--warn-dim); }
+  #result.real   { color: #00e5a0; font-weight: bold; }
+  #result.attack { color: #ff6b6b; font-weight: bold; }
 
-  .result-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 4px;
-  }
-  .result-value {
-    font-size: 24px;
-    font-weight: 600;
-    letter-spacing: -0.02em;
-  }
-  #resultCard.real  .result-value { color: var(--accent); }
-  #resultCard.attack .result-value { color: var(--warn); }
-
-  .result-prob {
-    font-family: 'DM Mono', monospace;
-    font-size: 12px;
-    color: var(--muted);
-    margin-top: 2px;
-  }
-
-  /* Progress bar during inference */
-  .progress-wrap {
-    display: none;
-    width: 100%;
-    height: 3px;
-    background: var(--border);
-    border-radius: 100px;
-    overflow: hidden;
-  }
-  .progress-wrap.visible { display: block; }
-  .progress-bar {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    border-radius: 100px;
-    transition: width 0.1s linear;
-  }
-
-  canvas { display: none; }
+  #inferCanvas { display: none; }
 </style>
 </head>
 <body>
 
-<header>
-  <p class="logo">Face Verification</p>
-  <h1>Anti-Spoof Check</h1>
-</header>
+<h2>Live Anti-Spoof</h2>
+<p class="instructions">
+  • Good lighting, face clearly visible.<br>
+  • Fit your face tightly inside the oval — green outline = ready.
+</p>
 
-<div class="cam-wrap" id="camWrap">
+<div class="video-wrapper" id="wrapper">
   <video id="video" autoplay playsinline></video>
-
-  <!-- SVG oval outline -->
-  <svg class="oval-svg" viewBox="0 0 360 360" xmlns="http://www.w3.org/2000/svg">
-    <ellipse class="oval-ring" id="ovalRing"
-      cx="180" cy="180" rx="87" ry="113"
-      fill="none"
-      stroke="#3a3a44"
-      stroke-width="2.5"
-      stroke-dasharray="6 4"
-    />
-  </svg>
-
-  <div class="status-pill" id="statusPill">Align your face</div>
+  <canvas id="debugCanvas"></canvas>
+  <div id="statusPill">Looking for face…</div>
 </div>
 
-<canvas id="canvas" width="224" height="224"></canvas>
-
-<div class="controls">
-  <p class="hint" id="hint">Position your face inside the oval until the outline turns green</p>
-
-  <div class="progress-wrap" id="progressWrap">
-    <div class="progress-bar" id="progressBar"></div>
-  </div>
-
-  <button id="captureBtn">Capture &amp; Verify</button>
-
-  <div id="resultCard">
-    <div class="result-label">Verdict</div>
-    <div class="result-value" id="resultValue">—</div>
-    <div class="result-prob" id="resultProb"></div>
-  </div>
-</div>
+<canvas id="inferCanvas" width="224" height="224"></canvas>
+<button id="captureBtn">Capture &amp; Verify</button>
+<p id="result">Loading model…</p>
 
 <script>
-// ─── State ───────────────────────────────────────────────
-let session = null;
+// ─────────────────────────────────────────────────────────
+//  OVAL — must match the CSS radial-gradient exactly:
+//    ellipse 35% 55% at center
+//  → rx = 35% of wrapper width,  ry = 55% of wrapper height
+//  In normalised coords (0-1): cx=0.5, cy=0.5, rx=0.35, ry=0.55
+// ─────────────────────────────────────────────────────────
+const OX = 0.50, OY = 0.50, ORX = 0.35, ORY = 0.55;
+
+function inOval(nx, ny) {
+  const dx = (nx - OX) / ORX;
+  const dy = (ny - OY) / ORY;
+  return dx * dx + dy * dy <= 1.0;
+}
+
+// ── DOM ──
+const video       = document.getElementById("video");
+const wrapper     = document.getElementById("wrapper");
+const debugCanvas = document.getElementById("debugCanvas");
+const dctx        = debugCanvas.getContext("2d");
+const statusPill  = document.getElementById("statusPill");
+const captureBtn  = document.getElementById("captureBtn");
+const resultEl    = document.getElementById("result");
+const inferCanvas = document.getElementById("inferCanvas");
+const ictx        = inferCanvas.getContext("2d");
+
+let session     = null;
 let faceAligned = false;
-let running = false;
+let running     = false;
 
-const video      = document.getElementById("video");
-const canvas     = document.getElementById("canvas");
-const ctx        = canvas.getContext("2d");
-const ovalRing   = document.getElementById("ovalRing");
-const statusPill = document.getElementById("statusPill");
-const captureBtn = document.getElementById("captureBtn");
-const resultCard = document.getElementById("resultCard");
-const resultValue= document.getElementById("resultValue");
-const resultProb = document.getElementById("resultProb");
-const hint       = document.getElementById("hint");
-const progressWrap = document.getElementById("progressWrap");
-const progressBar  = document.getElementById("progressBar");
+// ── Keep debug canvas sized to the wrapper ──
+function syncCanvas() {
+  debugCanvas.width  = wrapper.offsetWidth;
+  debugCanvas.height = wrapper.offsetHeight;
+}
+new ResizeObserver(syncCanvas).observe(wrapper);
 
-// ─── Oval params (matching CSS ellipse, normalised 0-1) ──
-// cx=0.5 cy=0.5  rx≈0.242 (87/360)  ry≈0.314 (113/360)
-const OVAL = { cx: 0.5, cy: 0.5, rx: 0.242, ry: 0.314 };
-// How tightly the face box must fit inside the oval (0-1, higher = stricter)
-const TIGHT = 0.75;
-
-// ─── Load ONNX model ─────────────────────────────────────
+// ── Load ONNX model ──
 async function loadModel() {
-  try {
-    session = await ort.InferenceSession.create("optimized_antispoof_cnn_int8.onnx");
-    console.log("Model loaded");
-  } catch(e) {
-    // Try fallback name
+  for (const name of ["optimized_antispoof_cnn_int8.onnx", "antispoof_model.onnx"]) {
     try {
-      session = await ort.InferenceSession.create("antispoof_model.onnx");
-      console.log("Fallback model loaded");
-    } catch(e2) {
-      console.warn("No model found – capture will show demo result");
-    }
+      session = await ort.InferenceSession.create(name);
+      console.log("Model loaded:", name);
+      resultEl.textContent = "Ready — align your face.";
+      return;
+    } catch(_) {}
   }
+  resultEl.textContent = "No model found (place .onnx here).";
 }
 
-// ─── MediaPipe Face Detection ────────────────────────────
-function startFaceDetection() {
-  const faceDetection = new FaceDetection({
-    locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}`
+// ── MediaPipe ──
+function startDetection() {
+  syncCanvas();
+  const fd = new FaceDetection({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/${f}`
   });
+  fd.setOptions({ model: "short", minDetectionConfidence: 0.5 });
+  fd.onResults(onResults);
 
-  faceDetection.setOptions({
-    model: 'short',          // fast, works well for frontal faces
-    minDetectionConfidence: 0.6
+  const cam = new Camera(video, {
+    onFrame: async () => { await fd.send({ image: video }); },
+    width: 640, height: 480
   });
-
-  faceDetection.onResults(onFaceResults);
-
-  const camera = new Camera(video, {
-    onFrame: async () => {
-      await faceDetection.send({ image: video });
-    },
-    width: 640,
-    height: 640
-  });
-  camera.start();
+  cam.start();
 }
 
-// ─── Process detection results ───────────────────────────
-function onFaceResults(results) {
+// ── Per-frame result handler ──
+function onResults(results) {
+  const W = debugCanvas.width;
+  const H = debugCanvas.height;
+  dctx.clearRect(0, 0, W, H);
+
+  // Always draw the oval so user can see where to aim
+  drawOval(W, H);
+
   if (!results.detections || results.detections.length === 0) {
-    setAligned(false);
+    setAligned(false, "No face detected");
     return;
   }
 
-  // Pick the largest / most confident face
   const det = results.detections[0];
-  const bb  = det.boundingBox; // { xCenter, yCenter, width, height } normalised
+  const bb  = det.boundingBox;
+  // MediaPipe NormalizedRect: xCenter, yCenter, width, height (all 0-1, unmirrored)
+  // Video is CSS mirrored → flip x:  mirroredX = 1 - x
+  const bCX  = 1 - bb.xCenter;
+  const bCY  = bb.yCenter;
+  const bW   = bb.width;
+  const bH   = bb.height;
 
-  const fLeft   = bb.xCenter - bb.width  / 2;
-  const fRight  = bb.xCenter + bb.width  / 2;
-  const fTop    = bb.yCenter - bb.height / 2;
-  const fBottom = bb.yCenter + bb.height / 2;
+  const fL = bCX - bW / 2;
+  const fR = bCX + bW / 2;
+  const fT = bCY - bH / 2;
+  const fB = bCY + bH / 2;
 
-  // Check the four cardinal corners of face box lie inside oval
-  const inside = checkInOval(fLeft, fTop) &&
-                 checkInOval(fRight, fTop) &&
-                 checkInOval(fLeft, fBottom) &&
-                 checkInOval(fRight, fBottom);
+  // ── Tight-fit test ──
+  // All 4 corners inside oval
+  const cornersIn = inOval(fL, fT) && inOval(fR, fT) &&
+                    inOval(fL, fB) && inOval(fR, fB);
 
-  // Also require face covers a minimum fraction of oval area (not too small)
-  const faceArea  = bb.width * bb.height;
-  const ovalArea  = Math.PI * OVAL.rx * OVAL.ry;
-  const sizeFit   = faceArea >= ovalArea * TIGHT * 0.6;
+  // Face area must be ≥ 55% of oval area (close enough)
+  const bigEnough = (bW * bH) >= (Math.PI * ORX * ORY * 0.55);
 
-  setAligned(inside && sizeFit);
+  const aligned = cornersIn && bigEnough;
+
+  // ── Draw face bounding box ──
+  const bx = fL * W, by = fT * H, bw2 = bW * W, bh2 = bH * H;
+  dctx.strokeStyle = aligned ? "#00e5a0" : "#ff6b6b";
+  dctx.lineWidth   = 2.5;
+  dctx.strokeRect(bx, by, bw2, bh2);
+
+  // Centre dot
+  dctx.fillStyle = aligned ? "#00e5a0" : "#ff9944";
+  dctx.beginPath();
+  dctx.arc(bCX * W, bCY * H, 5, 0, Math.PI * 2);
+  dctx.fill();
+
+  // Debug label: shows exactly what checks pass/fail
+  const conf  = +(det.score?.[0] ?? det.score ?? 0);
+  const label = `conf:${conf.toFixed(2)}  corners:${cornersIn?"✓":"✗"}  size:${bigEnough?"✓":"✗"}`;
+  dctx.font      = "11px monospace";
+  dctx.fillStyle = "#fff";
+  dctx.fillText(label, bx + 4, Math.max(by - 6, 12));
+
+  // Hint text for user
+  let hint = "";
+  if (!cornersIn && !bigEnough) hint = "Move closer & centre";
+  else if (!cornersIn)           hint = "Centre face in oval";
+  else if (!bigEnough)           hint = "Move closer";
+  else                           hint = "Face aligned ✓";
+
+  setAligned(aligned, hint);
 }
 
-// Normalised point (nx,ny) inside the CSS oval?
-function checkInOval(nx, ny) {
-  // MediaPipe coords: x from left, y from top — but video is mirrored
-  // Mirror x: real_x = 1 - nx
-  const mx = 1 - nx;
-  const dx = (mx - OVAL.cx) / OVAL.rx;
-  const dy = (ny - OVAL.cy) / OVAL.ry;
-  return (dx*dx + dy*dy) <= 1.0;
+function drawOval(W, H) {
+  dctx.save();
+  dctx.beginPath();
+  dctx.ellipse(OX * W, OY * H, ORX * W, ORY * H, 0, 0, Math.PI * 2);
+  dctx.strokeStyle = faceAligned ? "#00e5a0" : "rgba(255,255,255,0.4)";
+  dctx.lineWidth   = faceAligned ? 3 : 2;
+  dctx.setLineDash(faceAligned ? [] : [8, 5]);
+  dctx.stroke();
+  dctx.restore();
 }
 
-// ─── Toggle aligned state ────────────────────────────────
-function setAligned(aligned) {
-  if (aligned === faceAligned) return;
+function setAligned(aligned, hint) {
   faceAligned = aligned;
-
-  if (aligned) {
-    ovalRing.setAttribute("stroke", "#00e5a0");
-    ovalRing.setAttribute("stroke-dasharray", "none");
-    ovalRing.setAttribute("stroke-width", "3");
-    statusPill.textContent = "Face aligned ✓";
-    statusPill.classList.add("aligned");
-    hint.textContent = "Great! Tap the button to verify.";
-    captureBtn.classList.add("visible");
-  } else {
-    ovalRing.setAttribute("stroke", "#3a3a44");
-    ovalRing.setAttribute("stroke-dasharray", "6 4");
-    ovalRing.setAttribute("stroke-width", "2.5");
-    statusPill.textContent = "Align your face";
-    statusPill.classList.remove("aligned");
-    hint.textContent = "Position your face inside the oval until the outline turns green";
-    captureBtn.classList.remove("visible");
-  }
+  statusPill.textContent = hint || (aligned ? "Face aligned ✓" : "Align your face");
+  statusPill.classList.toggle("aligned", aligned);
+  captureBtn.classList.toggle("visible", aligned);
 }
 
-// ─── Capture & run inference ─────────────────────────────
+// ── Capture & Infer ──
 captureBtn.addEventListener("click", async () => {
   if (running || !faceAligned) return;
   running = true;
-
   captureBtn.disabled = true;
-  resultCard.classList.remove("visible", "real", "attack");
-  progressWrap.classList.add("visible");
+  resultEl.className  = "";
+  resultEl.textContent = "Analysing… ⏳";
 
-  // Animate progress bar over ~2.5 s
-  let pct = 0;
-  const ticker = setInterval(() => {
-    pct = Math.min(pct + 2, 90);
-    progressBar.style.width = pct + "%";
-  }, 50);
+  ictx.save();
+  ictx.scale(-1, 1);
+  ictx.drawImage(video, -224, 0, 224, 224);
+  ictx.restore();
 
-  // Draw current frame to 224×224 canvas (mirrored to match display)
-  ctx.save();
-  ctx.scale(-1, 1);
-  ctx.drawImage(video, -224, 0, 224, 224);
-  ctx.restore();
-
-  const imageData = ctx.getImageData(0, 0, 224, 224).data;
+  const imageData = ictx.getImageData(0, 0, 224, 224).data;
   const floatData = new Float32Array(3 * 224 * 224);
-  const mean = [0.485, 0.456, 0.406];
-  const std  = [0.229, 0.224, 0.225];
-
+  const mean = [0.485, 0.456, 0.406], std = [0.229, 0.224, 0.225];
   for (let i = 0; i < 224 * 224; i++) {
-    floatData[i]               = (imageData[i*4]   / 255 - mean[0]) / std[0];
-    floatData[i + 224*224]     = (imageData[i*4+1] / 255 - mean[1]) / std[1];
-    floatData[i + 2*224*224]   = (imageData[i*4+2] / 255 - mean[2]) / std[2];
+    floatData[i]             = (imageData[i*4]   / 255 - mean[0]) / std[0];
+    floatData[i + 224*224]   = (imageData[i*4+1] / 255 - mean[1]) / std[1];
+    floatData[i + 2*224*224] = (imageData[i*4+2] / 255 - mean[2]) / std[2];
   }
 
-  // Small artificial delay so the progress bar feels deliberate (~2s)
-  await new Promise(r => setTimeout(r, 1800));
+  await new Promise(r => setTimeout(r, 2000)); // deliberate 2s pause
 
-  let prob = null;
   if (session) {
     try {
-      const tensor  = new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
-      const results = await session.run({ input: tensor });
-      const logit   = results.output.data[0];
-      prob = 1 / (1 + Math.exp(-logit));
+      const tensor = new ort.Tensor("float32", floatData, [1, 3, 224, 224]);
+      const out    = await session.run({ input: tensor });
+      const prob   = 1 / (1 + Math.exp(-out.output.data[0]));
+      const isReal = prob > 0.5;
+      resultEl.className   = isReal ? "real" : "attack";
+      resultEl.textContent = isReal
+        ? `✓ REAL  (${prob.toFixed(3)})`
+        : `✗ SPOOF  (${(1-prob).toFixed(3)})`;
     } catch(e) {
-      console.error("Inference error:", e);
+      resultEl.textContent = "Inference error: " + e.message;
     }
-  }
-
-  clearInterval(ticker);
-  progressBar.style.width = "100%";
-  await new Promise(r => setTimeout(r, 300));
-  progressWrap.classList.remove("visible");
-  progressBar.style.width = "0%";
-
-  // Show result
-  if (prob !== null) {
-    const isReal = prob > 0.5;
-    resultValue.textContent = isReal ? "✓ Real" : "✗ Spoof";
-    resultProb.textContent  = `Confidence: ${(isReal ? prob : 1-prob).toFixed(3)}`;
-    resultCard.classList.add("visible", isReal ? "real" : "attack");
   } else {
-    resultValue.textContent = "Model unavailable";
-    resultProb.textContent  = "Place your .onnx file in the same directory";
-    resultCard.classList.add("visible");
+    resultEl.textContent = "No model — place .onnx in same folder.";
   }
 
   captureBtn.disabled = false;
   running = false;
 });
 
-// ─── Init ─────────────────────────────────────────────────
+// ── Boot ──
 loadModel();
-startFaceDetection();
+startDetection();
 </script>
 </body>
 </html>
