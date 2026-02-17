@@ -1,0 +1,5 @@
+Baseline (no branch)  
+→ 88.94% | AUC 0.9500  (epoch 14)
+
+V2 - Depth wise-Texture branch        → 91.24% | AUC:0.9679  (epoch 16)
+Epoch 9/20 | Train Acc: 98.86% | Test Acc:  91.94% | AUC: 0.9539
